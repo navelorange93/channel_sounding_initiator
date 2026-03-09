@@ -1,0 +1,4 @@
+/Users/chengqi/SimplicityStudio/v6_workspace/bt_cs_soc_initiator/cmake_gcc/build/CMakeFiles/slc.dir
+/Users/chengqi/SimplicityStudio/v6_workspace/bt_cs_soc_initiator/cmake_gcc/build/CMakeFiles/bt_cs_soc_initiator.dir
+/Users/chengqi/SimplicityStudio/v6_workspace/bt_cs_soc_initiator/cmake_gcc/build/CMakeFiles/edit_cache.dir
+/Users/chengqi/SimplicityStudio/v6_workspace/bt_cs_soc_initiator/cmake_gcc/build/CMakeFiles/rebuild_cache.dir
