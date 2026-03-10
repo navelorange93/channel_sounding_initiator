@@ -75,6 +75,7 @@
 
 // Security
 #include "security.h"
+#include "measurement_report.h"
 
 // -----------------------------------------------------------------------------
 // Macros
@@ -114,7 +115,6 @@ typedef struct {
   cs_measurement_data_t measurement_mainmode;
   cs_measurement_data_t measurement_submode;
   cs_intermediate_result_t measurement_progress;
-  bool measurement_arrived;
   bool measurement_progress_changed;
   bool read_remote_capabilities;
   bool security_increased;
@@ -145,6 +145,10 @@ static sl_status_t create_new_initiator_instance(uint8_t conn_handle);
 static void delete_initiator_instance(uint8_t conn_handle);
 static void app_timer_callback(app_timer_t *timer, void *data);
 static void check_supported_capabilities(const sl_bt_msg_t *evt);
+static const char *cs_error_event_to_str(cs_error_event_t err_evt);
+static void process_measurement_reports(void);
+static void log_human_readable_measurement(uint8_t instance_num,
+                                           const measurement_report_measurement_t *measurement);
 
 // -----------------------------------------------------------------------------
 // Static variables
@@ -166,6 +170,7 @@ void app_init(void)
   sl_status_t sc = SL_STATUS_OK;
 
   trace_init();
+  measurement_report_init();
 
   // initialize initiator instances
   for (uint32_t i = 0u; i < CS_INITIATOR_MAX_CONNECTIONS; i++) {
@@ -175,7 +180,6 @@ void app_init(void)
     memset(&cs_initiator_instances[i].measurement_mainmode, 0u, sizeof(cs_measurement_data_t));
     memset(&cs_initiator_instances[i].measurement_submode, 0u, sizeof(cs_measurement_data_t));
     memset(&cs_initiator_instances[i].measurement_progress, 0u, sizeof(cs_intermediate_result_t));
-    cs_initiator_instances[i].measurement_arrived = false;
     cs_initiator_instances[i].measurement_progress_changed = false;
     cs_initiator_instances[i].read_remote_capabilities = false;
     cs_initiator_instances[i].security_increased = false;
@@ -254,72 +258,11 @@ void app_process_action(void)
   if (sc != SL_STATUS_OK) {
     log_error(APP_PREFIX "Failed to send security confirmation: 0x%04lx" NL, (unsigned long)sc);
   }
+
+  process_measurement_reports();
+
   for (uint8_t i = 0u; i < CS_INITIATOR_MAX_CONNECTIONS; i++) {
-    if (cs_initiator_instances[i].measurement_arrived) {
-      // write results to the display & to the iostream
-      measurement_counter++;
-      cs_initiator_instances[i].measurement_arrived = false;
-      const bd_addr *bt_address = ble_peer_manager_get_bt_address(cs_initiator_instances[i].conn_handle);
-      PRINT_HEAD_AND_DATA(measurement_counter, is_data) {
-        log_info(APP_INSTANCE_PREFIX, cs_initiator_instances[i].conn_handle);
-        cs_initiator_print_bt_address(!is_data, bt_address);
-
-        cs_initiator_print_result(CS_RESULT_FIELD_DISTANCE_MAINMODE,
-                                  !is_data,
-                                  &(cs_initiator_instances[i].measurement_mainmode.distance_filtered));
-        // Distance submode
-        if (initiator_config.cs_sub_mode != sl_bt_cs_submode_disabled) {
-          cs_initiator_print_result(CS_RESULT_FIELD_DISTANCE_SUBMODE,
-                                    !is_data,
-                                    &(cs_initiator_instances[i].measurement_submode.distance_filtered));
-        }
-        // Distance RAW
-        cs_initiator_print_result(CS_RESULT_FIELD_DISTANCE_RAW_MAINMODE,
-                                  !is_data,
-                                  &(cs_initiator_instances[i].measurement_mainmode.distance_raw));
-        // Distance submode RAW
-        if (initiator_config.cs_sub_mode != sl_bt_cs_submode_disabled) {
-          cs_initiator_print_result(CS_RESULT_FIELD_DISTANCE_RAW_SUBMODE,
-                                    !is_data,
-                                    &(cs_initiator_instances[i].measurement_submode.distance_raw));
-        }
-        // Likeliness
-        cs_initiator_print_result(CS_RESULT_FIELD_LIKELINESS_MAINMODE,
-                                  !is_data,
-                                  &(cs_initiator_instances[i].measurement_mainmode.likeliness));
-        // Likeliness submode
-        if (initiator_config.cs_sub_mode != sl_bt_cs_submode_disabled) {
-          cs_initiator_print_result(CS_RESULT_FIELD_LIKELINESS_SUBMODE,
-                                    !is_data,
-                                    &(cs_initiator_instances[i].measurement_submode.likeliness));
-        }
-        // RSSI distance
-        cs_initiator_print_result(CS_RESULT_FIELD_DISTANCE_RSSI,
-                                  !is_data,
-                                  &(cs_initiator_instances[i].measurement_mainmode.distance_estimate_rssi));
-        // Velocity
-        cs_initiator_print_result(CS_RESULT_FIELD_VELOCITY_MAINMODE,
-                                  !is_data,
-                                  &(cs_initiator_instances[i].measurement_mainmode.velocity));
-
-        // BER
-        cs_initiator_print_result(CS_RESULT_FIELD_BIT_ERROR_RATE,
-                                  !is_data,
-                                  &(cs_initiator_instances[i].measurement_mainmode.bit_error_rate));
-        log_info(NL);
-      }
-      cs_initiator_display_update_data(i,
-                                       cs_initiator_instances[i].conn_handle,
-                                       CS_INITIATOR_DISPLAY_STATUS_CONNECTED,
-                                       cs_initiator_instances[i].measurement_mainmode.distance_filtered,
-                                       cs_initiator_instances[i].measurement_mainmode.distance_estimate_rssi,
-                                       cs_initiator_instances[i].measurement_mainmode.likeliness,
-                                       cs_initiator_instances[i].measurement_mainmode.bit_error_rate,
-                                       cs_initiator_instances[i].measurement_mainmode.distance_raw,
-                                       cs_initiator_instances[i].measurement_progress.progress_percentage,
-                                       rtl_config.algo_mode,
-                                       initiator_config.cs_main_mode);
-    } else if (cs_initiator_instances[i].measurement_progress_changed) {
+    if (cs_initiator_instances[i].measurement_progress_changed) {
       // write measurement progress to the display without changing the last valid
       // measurement results
       cs_initiator_instances[i].measurement_progress_changed = false;
@@ -361,6 +304,98 @@ static void app_timer_callback(app_timer_t *timer, void *data)
   (void)timer;
   (void)data;
   cs_initiator_display_update();
+}
+
+static void process_measurement_reports(void)
+{
+  measurement_report_measurement_t measurement;
+  uint32_t dropped_measurement_count = measurement_report_take_dropped_count();
+
+  if (dropped_measurement_count > 0u) {
+    measurement_report_emit_error("queue",
+                                  "overflow",
+                                  SL_BT_INVALID_CONNECTION_HANDLE,
+                                  NULL,
+                                  dropped_measurement_count);
+  }
+
+  while (measurement_report_queue_pop(&measurement)) {
+    uint8_t instance_num;
+    sl_status_t sc = get_instance_number(measurement.conn_handle, &instance_num);
+    if (sc != SL_STATUS_OK) {
+      measurement_report_emit_error("queue",
+                                    "orphan_measurement",
+                                    measurement.conn_handle,
+                                    &measurement.reflector_address,
+                                    sc);
+      continue;
+    }
+
+#if CS_INITIATOR_HUMAN_READABLE_MEASUREMENT_LOG
+    log_human_readable_measurement(instance_num, &measurement);
+#endif
+
+    cs_initiator_display_update_data(instance_num,
+                                     measurement.conn_handle,
+                                     CS_INITIATOR_DISPLAY_STATUS_CONNECTED,
+                                     measurement.distance_filtered,
+                                     measurement.distance_rssi,
+                                     measurement.likeliness,
+                                     measurement.bit_error_rate_valid ? measurement.bit_error_rate : 0.0f,
+                                     measurement.distance_raw,
+                                     cs_initiator_instances[instance_num].measurement_progress.progress_percentage,
+                                     rtl_config.algo_mode,
+                                     initiator_config.cs_main_mode);
+
+    measurement_report_emit_measurement(&measurement);
+  }
+}
+
+static void log_human_readable_measurement(uint8_t instance_num,
+                                           const measurement_report_measurement_t *measurement)
+{
+  const bd_addr *bt_address = &measurement->reflector_address;
+
+  measurement_counter++;
+  PRINT_HEAD_AND_DATA(measurement_counter, is_data) {
+    log_info(APP_INSTANCE_PREFIX, measurement->conn_handle);
+    cs_initiator_print_bt_address(!is_data, bt_address);
+
+    cs_initiator_print_result(CS_RESULT_FIELD_DISTANCE_MAINMODE,
+                              !is_data,
+                              (float *)&measurement->distance_filtered);
+    if (initiator_config.cs_sub_mode != sl_bt_cs_submode_disabled) {
+      cs_initiator_print_result(CS_RESULT_FIELD_DISTANCE_SUBMODE,
+                                !is_data,
+                                &(cs_initiator_instances[instance_num].measurement_submode.distance_filtered));
+    }
+    cs_initiator_print_result(CS_RESULT_FIELD_DISTANCE_RAW_MAINMODE,
+                              !is_data,
+                              (float *)&measurement->distance_raw);
+    if (initiator_config.cs_sub_mode != sl_bt_cs_submode_disabled) {
+      cs_initiator_print_result(CS_RESULT_FIELD_DISTANCE_RAW_SUBMODE,
+                                !is_data,
+                                &(cs_initiator_instances[instance_num].measurement_submode.distance_raw));
+    }
+    cs_initiator_print_result(CS_RESULT_FIELD_LIKELINESS_MAINMODE,
+                              !is_data,
+                              (float *)&measurement->likeliness);
+    if (initiator_config.cs_sub_mode != sl_bt_cs_submode_disabled) {
+      cs_initiator_print_result(CS_RESULT_FIELD_LIKELINESS_SUBMODE,
+                                !is_data,
+                                &(cs_initiator_instances[instance_num].measurement_submode.likeliness));
+    }
+    cs_initiator_print_result(CS_RESULT_FIELD_DISTANCE_RSSI,
+                              !is_data,
+                              (float *)&measurement->distance_rssi);
+    cs_initiator_print_result(CS_RESULT_FIELD_VELOCITY_MAINMODE,
+                              !is_data,
+                              (float *)&measurement->velocity);
+    cs_initiator_print_result(CS_RESULT_FIELD_BIT_ERROR_RATE,
+                              !is_data,
+                              (float *)&measurement->bit_error_rate);
+    log_info(NL);
+  }
 }
 
 /******************************************************************************
@@ -476,6 +511,18 @@ static void cs_on_result(const uint8_t conn_handle,
   (void)ranging_data;
   (void)user_data;
   uint8_t initiator_num;
+  measurement_report_measurement_t measurement_event = { 0 };
+  bool measurement_valid = true;
+  bool velocity_valid = false;
+  bool bit_error_rate_valid = false;
+  const bd_addr *reflector_address = ble_peer_manager_get_bt_address(conn_handle);
+
+  if (reflector_address != NULL) {
+    measurement_event.reflector_address = *reflector_address;
+  }
+
+  measurement_event.conn_handle = conn_handle;
+  measurement_event.ranging_counter = ranging_counter;
 
   if (result != NULL) {
     sl_status_t sc = get_instance_number(conn_handle, &initiator_num);
@@ -483,6 +530,11 @@ static void cs_on_result(const uint8_t conn_handle,
       log_error(APP_INSTANCE_PREFIX "Failed to get instance number for connection! [sc: 0x%lx]" NL,
                 conn_handle,
                 sc);
+      measurement_report_emit_error("measurement",
+                                    "instance_lookup_failed",
+                                    conn_handle,
+                                    reflector_address,
+                                    sc);
       return;
     }
 
@@ -494,6 +546,7 @@ static void cs_on_result(const uint8_t conn_handle,
       log_error(APP_INSTANCE_PREFIX "Failed to extract distance! [sc: 0x%lx]" NL,
                 conn_handle,
                 sc);
+      measurement_valid = false;
     }
 
     if (initiator_config.cs_sub_mode != sl_bt_cs_submode_disabled) {
@@ -505,6 +558,7 @@ static void cs_on_result(const uint8_t conn_handle,
         log_error(APP_INSTANCE_PREFIX "Failed to extract sub mode distance! [sc: 0x%lx]" NL,
                   conn_handle,
                   sc);
+        measurement_valid = false;
       }
     }
 
@@ -516,6 +570,7 @@ static void cs_on_result(const uint8_t conn_handle,
       log_error(APP_INSTANCE_PREFIX "Failed to extract RAW distance! [sc: 0x%lx]" NL,
                 conn_handle,
                 sc);
+      measurement_valid = false;
     }
 
     if (initiator_config.cs_sub_mode != sl_bt_cs_submode_disabled) {
@@ -527,6 +582,7 @@ static void cs_on_result(const uint8_t conn_handle,
         log_error(APP_INSTANCE_PREFIX "Failed to extract sub mode RAW distance! [sc: 0x%lx]" NL,
                   conn_handle,
                   sc);
+        measurement_valid = false;
       }
     }
 
@@ -538,6 +594,7 @@ static void cs_on_result(const uint8_t conn_handle,
       log_error(APP_INSTANCE_PREFIX "Failed to extract likeliness! [sc: 0x%lx]" NL,
                 conn_handle,
                 sc);
+      measurement_valid = false;
     }
 
     if (initiator_config.cs_sub_mode != sl_bt_cs_submode_disabled) {
@@ -549,6 +606,7 @@ static void cs_on_result(const uint8_t conn_handle,
         log_error(APP_INSTANCE_PREFIX "Failed to extract sub mode likeliness! [sc: 0x%lx]" NL,
                   conn_handle,
                   sc);
+        measurement_valid = false;
       }
     }
 
@@ -564,6 +622,9 @@ static void cs_on_result(const uint8_t conn_handle,
         log_error(APP_INSTANCE_PREFIX "Failed to extract velocity! [sc: 0x%lx]" NL,
                   conn_handle,
                   sc);
+        measurement_valid = false;
+      } else {
+        velocity_valid = true;
       }
     }
 
@@ -577,6 +638,9 @@ static void cs_on_result(const uint8_t conn_handle,
         log_error(APP_INSTANCE_PREFIX "Failed to extract BER! [sc: 0x%lx]" NL,
                   conn_handle,
                   sc);
+        measurement_valid = false;
+      } else {
+        bit_error_rate_valid = true;
       }
     }
 
@@ -589,13 +653,38 @@ static void cs_on_result(const uint8_t conn_handle,
       log_error(APP_INSTANCE_PREFIX "Failed to extract RSSI distance! [sc: 0x%lx]" NL,
                 conn_handle,
                 sc);
+      measurement_valid = false;
     }
-    cs_initiator_instances[initiator_num].measurement_arrived = true;
     cs_initiator_instances[initiator_num].measurement_cnt++;
     cs_initiator_instances[initiator_num].ranging_counter = ranging_counter;
+
+    measurement_event.measurement_count = cs_initiator_instances[initiator_num].measurement_cnt;
+    measurement_event.distance_filtered = cs_initiator_instances[initiator_num].measurement_mainmode.distance_filtered;
+    measurement_event.distance_raw = cs_initiator_instances[initiator_num].measurement_mainmode.distance_raw;
+    measurement_event.likeliness = cs_initiator_instances[initiator_num].measurement_mainmode.likeliness;
+    measurement_event.distance_rssi = cs_initiator_instances[initiator_num].measurement_mainmode.distance_estimate_rssi;
+    measurement_event.velocity = velocity_valid
+                                 ? cs_initiator_instances[initiator_num].measurement_mainmode.velocity
+                                 : 0.0f;
+    measurement_event.bit_error_rate = bit_error_rate_valid
+                                       ? cs_initiator_instances[initiator_num].measurement_mainmode.bit_error_rate
+                                       : 0.0f;
+    measurement_event.velocity_valid = velocity_valid;
+    measurement_event.bit_error_rate_valid = bit_error_rate_valid;
+    measurement_event.valid = measurement_valid;
+
+    if (!measurement_report_queue_push(&measurement_event)) {
+      log_error(APP_INSTANCE_PREFIX "Structured measurement queue full, dropping report." NL,
+                conn_handle);
+    }
   } else {
     log_info(APP_INSTANCE_PREFIX "RTL process skipped!" NL,
              conn_handle);
+    measurement_report_emit_error("rtl",
+                                  "process_skipped",
+                                  conn_handle,
+                                  reflector_address,
+                                  0u);
   }
 }
 
@@ -789,7 +878,6 @@ static void delete_initiator_instance(uint8_t conn_handle)
       memset(&cs_initiator_instances[i].measurement_mainmode, 0u, sizeof(cs_measurement_data_t));
       memset(&cs_initiator_instances[i].measurement_submode, 0u, sizeof(cs_measurement_data_t));
       memset(&cs_initiator_instances[i].measurement_progress, 0u, sizeof(cs_intermediate_result_t));
-      cs_initiator_instances[i].measurement_arrived = false;
       cs_initiator_instances[i].measurement_progress_changed = false;
       cs_initiator_instances[i].read_remote_capabilities = false;
       cs_initiator_instances[i].security_increased = false;
@@ -799,11 +887,43 @@ static void delete_initiator_instance(uint8_t conn_handle)
   }
 }
 
+static const char *cs_error_event_to_str(cs_error_event_t err_evt)
+{
+  switch (err_evt) {
+    case CS_ERROR_EVENT_CS_PROCEDURE_STOP_TIMER_FAILED:
+      return "procedure_stop_timer_failed";
+    case CS_ERROR_EVENT_CS_PROCEDURE_UNEXPECTED_DATA:
+      return "unexpected_data";
+    case CS_ERROR_EVENT_RTL_PROCESS_ERROR:
+      return "rtl_process_error";
+    case CS_ERROR_EVENT_INITIATOR_FAILED_TO_SET_INTERVALS:
+      return "set_intervals_failed";
+    case CS_ERROR_EVENT_INITIATOR_PBR_ANTENNA_USAGE_NOT_SUPPORTED:
+      return "pbr_antenna_unsupported";
+    case CS_ERROR_EVENT_INITIATOR_RTT_ANTENNA_USAGE_NOT_SUPPORTED:
+      return "rtt_antenna_unsupported";
+    case CS_ERROR_EVENT_RAS_CLIENT_REALTIME_RECEIVE_FAILED:
+      return "ras_receive_failed";
+    case CS_ERROR_EVENT_TIMER_ELAPSED:
+      return "timer_elapsed";
+    case CS_ERROR_EVENT_INITIATOR_FAILED_TO_INCREASE_SECURITY:
+      return "security_increase_failed";
+    default:
+      return "unknown";
+  }
+}
+
 /******************************************************************************
  * CS error handler
  *****************************************************************************/
 static void cs_on_error(uint8_t conn_handle, cs_error_event_t err_evt, sl_status_t sc)
 {
+  measurement_report_emit_error("cs",
+                                cs_error_event_to_str(err_evt),
+                                conn_handle,
+                                ble_peer_manager_get_bt_address(conn_handle),
+                                sc);
+
   switch (err_evt) {
     // Assert
     case CS_ERROR_EVENT_CS_PROCEDURE_STOP_TIMER_FAILED:
@@ -957,6 +1077,16 @@ void sl_bt_on_event(sl_bt_msg_t * evt)
                address.addr[1],
                address.addr[0]);
 
+      measurement_report_emit_boot(&address,
+                                   address_type,
+                                   CS_INITIATOR_MAX_CONNECTIONS,
+                                   rtl_config.algo_mode,
+                                   initiator_config.cs_main_mode,
+                                   initiator_config.cs_sub_mode,
+                                   initiator_config.max_connection_interval,
+                                   initiator_config.max_procedure_interval,
+                                   initiator_config.channel_map_preset);
+
       sc = cs_antenna_configure(CS_INITIATOR_ANTENNA_OFFSET);
       app_assert_status(sc);
 
@@ -1028,6 +1158,9 @@ void sl_bt_on_event(sl_bt_msg_t * evt)
       uint8_t cs_tone_antenna_config_index_temp = initiator_config.cs_tone_antenna_config_idx;
       uint8_t connection = evt->data.evt_cs_read_remote_supported_capabilities_complete.connection;
       check_supported_capabilities(evt);
+      measurement_report_emit_anchor_up("capabilities_ok",
+                                        connection,
+                                        ble_peer_manager_get_bt_address(connection));
       if (initiator_config.max_procedure_count == 0) {
         sc = cs_initiator_get_intervals(initiator_config.cs_main_mode,
                                         initiator_config.cs_sub_mode,
@@ -1070,6 +1203,9 @@ void sl_bt_on_event(sl_bt_msg_t * evt)
       } else {
         log_info(APP_INSTANCE_PREFIX "New initiator instance created" NL,
                  connection);
+        measurement_report_emit_anchor_up("ready",
+                                          connection,
+                                          ble_peer_manager_get_bt_address(connection));
       }
       // set cs_tone_antenna_config_idx to default
       initiator_config.cs_tone_antenna_config_idx = cs_tone_antenna_config_index_temp;
@@ -1096,6 +1232,11 @@ void sl_bt_on_event(sl_bt_msg_t * evt)
                 evt->data.evt_system_resource_exhausted.num_buffers_discarded,
                 evt->data.evt_system_resource_exhausted.num_buffer_allocation_failures,
                 evt->data.evt_system_resource_exhausted.num_heap_allocation_failures);
+      measurement_report_emit_error("system",
+                                    "resource_exhausted",
+                                    SL_BT_INVALID_CONNECTION_HANDLE,
+                                    NULL,
+                                    evt->data.evt_system_resource_exhausted.num_buffers_discarded);
       break;
     default:
       break;
@@ -1145,12 +1286,19 @@ void ble_peer_manager_on_event_initiator(ble_peer_manager_evt_type_t * event)
                address->addr[2],
                address->addr[1],
                address->addr[0]);
+      measurement_report_emit_anchor_up("connected",
+                                        event->connection_id,
+                                        address);
       check_cli_values();
       cs_initiator_display_set_measurement_mode(initiator_config.cs_main_mode, rtl_config.algo_mode);
 
       break;
     case BLE_PEER_MANAGER_ON_CONN_CLOSED:
       log_info(APP_INSTANCE_PREFIX "Connection closed" NL, event->connection_id);
+      address = ble_peer_manager_get_bt_address(event->connection_id);
+      measurement_report_emit_anchor_down("connection_closed",
+                                          event->connection_id,
+                                          address);
       sc = cs_initiator_delete(event->connection_id);
       if ((sc == SL_STATUS_NOT_FOUND) || (sc == SL_STATUS_INVALID_HANDLE)) {
         log_info(APP_INSTANCE_PREFIX "Initiator instance not found" NL, event->connection_id);
@@ -1169,6 +1317,11 @@ void ble_peer_manager_on_event_initiator(ble_peer_manager_evt_type_t * event)
     case BLE_PEER_MANAGER_ERROR:
       log_error(APP_INSTANCE_PREFIX "Peer Manager error" NL,
                 event->connection_id);
+      measurement_report_emit_error("peer_manager",
+                                    "event_error",
+                                    event->connection_id,
+                                    ble_peer_manager_get_bt_address(event->connection_id),
+                                    event->evt_id);
       break;
 
     default:

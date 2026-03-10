@@ -77,9 +77,9 @@
 
 // <o CS_INITIATOR_MAX_CONNECTIONS> Maximum initiator connections <1..4>
 // <i> If more than 1 initiator instances are created SL_BT_CONFIG_BUFFER_SIZE shall be increased.
-// <i> Default: 1
+// <i> Start the tech demo stabilization phase with 3 reflectors before revisiting 4.
 #ifndef CS_INITIATOR_MAX_CONNECTIONS
-#define CS_INITIATOR_MAX_CONNECTIONS                  (4)
+#define CS_INITIATOR_MAX_CONNECTIONS                  (3)
 #endif
 
 // <o CS_INITIATOR_MAX_RANGING_DATA_SIZE> Maximum ranging data size <32..2500>

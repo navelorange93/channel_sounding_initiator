@@ -13,7 +13,7 @@ project(
 include(bt_cs_soc_initiator.cmake)
 
 add_executable(bt_cs_soc_initiator
-    # Add additional sources here
+    ../measurement_report.c
 )
 
 target_include_directories(bt_cs_soc_initiator PUBLIC

@@ -54,9 +54,9 @@
 
 // <o BLE_PEER_MANAGER_COMMON_MAX_ALLOWED_CONN_COUNT> Max connections <0..32>
 // <i> This value should be less than or equal to SL_BT_CONFIG_MAX_CONNECTIONS
-// <i> Default: 4
+// <i> Default: 3
 #ifndef BLE_PEER_MANAGER_COMMON_MAX_ALLOWED_CONN_COUNT
-#define BLE_PEER_MANAGER_COMMON_MAX_ALLOWED_CONN_COUNT       4
+#define BLE_PEER_MANAGER_COMMON_MAX_ALLOWED_CONN_COUNT       3
 #endif
 
 // <o BLE_PEER_MANAGER_COMMON_TIMEOUT_GATT_MS> GATT timeout <0..10000>
