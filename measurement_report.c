@@ -101,20 +101,22 @@ void measurement_report_emit_error(const char *source,
                                    const char *detail,
                                    uint8_t conn_handle,
                                    const bd_addr *reflector_address,
-                                   uint32_t code)
+                                   uint32_t code,
+                                   uint32_t count)
 {
   char address_buffer[18];
   format_address(reflector_address, address_buffer, sizeof(address_buffer));
 
   sl_iostream_printf(sl_iostream_recommended_console_stream,
                      CS_INITIATOR_REPORT_PREFIX
-                     "|type=ERROR|seq=%lu|source=%s|detail=%s|conn=%u|addr=%s|code=0x%08lx\n",
+                     "|type=ERROR|seq=%lu|source=%s|detail=%s|conn=%u|addr=%s|code=0x%08lx|count=%lu\n",
                      (unsigned long)next_report_sequence(),
                      source,
                      detail,
                      conn_handle,
                      address_buffer,
-                     (unsigned long)code);
+                     (unsigned long)code,
+                     (unsigned long)count);
 }
 
 bool measurement_report_queue_push(const measurement_report_measurement_t *measurement)

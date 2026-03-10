@@ -110,11 +110,14 @@ typedef struct {
 // CS initiator instance
 typedef struct {
   uint8_t conn_handle;
+  bd_addr reflector_address;
   uint32_t measurement_cnt;
   uint32_t ranging_counter;
+  uint32_t rtl_process_error_count;
   cs_measurement_data_t measurement_mainmode;
   cs_measurement_data_t measurement_submode;
   cs_intermediate_result_t measurement_progress;
+  bool reflector_address_valid;
   bool measurement_progress_changed;
   bool read_remote_capabilities;
   bool security_increased;
@@ -139,7 +142,7 @@ static void cs_on_error(uint8_t conn_handle,
                         cs_error_event_t err_evt,
                         sl_status_t sc);
 static sl_status_t get_instance_number(uint8_t conn_handle, uint8_t *instance_num);
-static sl_status_t save_connection(uint8_t conn_handle);
+static sl_status_t save_connection(uint8_t conn_handle, const bd_addr *reflector_address);
 static void check_cli_values(void);
 static sl_status_t create_new_initiator_instance(uint8_t conn_handle);
 static void delete_initiator_instance(uint8_t conn_handle);
@@ -149,6 +152,8 @@ static const char *cs_error_event_to_str(cs_error_event_t err_evt);
 static void process_measurement_reports(void);
 static void log_human_readable_measurement(uint8_t instance_num,
                                            const measurement_report_measurement_t *measurement);
+static const bd_addr *get_reflector_address(uint8_t conn_handle);
+static uint32_t increment_rtl_process_error_count(uint8_t conn_handle);
 
 // -----------------------------------------------------------------------------
 // Static variables
@@ -175,11 +180,14 @@ void app_init(void)
   // initialize initiator instances
   for (uint32_t i = 0u; i < CS_INITIATOR_MAX_CONNECTIONS; i++) {
     cs_initiator_instances[i].conn_handle = SL_BT_INVALID_CONNECTION_HANDLE;
+    memset(&cs_initiator_instances[i].reflector_address, 0u, sizeof(bd_addr));
     cs_initiator_instances[i].measurement_cnt = 0u;
     cs_initiator_instances[i].ranging_counter = 0u;
+    cs_initiator_instances[i].rtl_process_error_count = 0u;
     memset(&cs_initiator_instances[i].measurement_mainmode, 0u, sizeof(cs_measurement_data_t));
     memset(&cs_initiator_instances[i].measurement_submode, 0u, sizeof(cs_measurement_data_t));
     memset(&cs_initiator_instances[i].measurement_progress, 0u, sizeof(cs_intermediate_result_t));
+    cs_initiator_instances[i].reflector_address_valid = false;
     cs_initiator_instances[i].measurement_progress_changed = false;
     cs_initiator_instances[i].read_remote_capabilities = false;
     cs_initiator_instances[i].security_increased = false;
@@ -316,6 +324,7 @@ static void process_measurement_reports(void)
                                   "overflow",
                                   SL_BT_INVALID_CONNECTION_HANDLE,
                                   NULL,
+                                  dropped_measurement_count,
                                   dropped_measurement_count);
   }
 
@@ -327,7 +336,8 @@ static void process_measurement_reports(void)
                                     "orphan_measurement",
                                     measurement.conn_handle,
                                     &measurement.reflector_address,
-                                    sc);
+                                    sc,
+                                    0u);
       continue;
     }
 
@@ -487,15 +497,45 @@ static sl_status_t get_instance_number(uint8_t conn_handle, uint8_t *instance_nu
 /******************************************************************************
  * Save connection
  *****************************************************************************/
-static sl_status_t save_connection(uint8_t conn_handle)
+static sl_status_t save_connection(uint8_t conn_handle, const bd_addr *reflector_address)
 {
   for (uint8_t i = 0u; i < CS_INITIATOR_MAX_CONNECTIONS; i++) {
     if (cs_initiator_instances[i].conn_handle == SL_BT_INVALID_CONNECTION_HANDLE) {
       cs_initiator_instances[i].conn_handle = conn_handle;
+      if (reflector_address != NULL) {
+        cs_initiator_instances[i].reflector_address = *reflector_address;
+        cs_initiator_instances[i].reflector_address_valid = true;
+      } else {
+        memset(&cs_initiator_instances[i].reflector_address, 0u, sizeof(bd_addr));
+        cs_initiator_instances[i].reflector_address_valid = false;
+      }
+      cs_initiator_instances[i].rtl_process_error_count = 0u;
       return SL_STATUS_OK;
     }
   }
   return SL_STATUS_FULL;
+}
+
+static const bd_addr *get_reflector_address(uint8_t conn_handle)
+{
+  uint8_t instance_num;
+  if (get_instance_number(conn_handle, &instance_num) == SL_STATUS_OK
+      && cs_initiator_instances[instance_num].reflector_address_valid) {
+    return &cs_initiator_instances[instance_num].reflector_address;
+  }
+
+  return ble_peer_manager_get_bt_address(conn_handle);
+}
+
+static uint32_t increment_rtl_process_error_count(uint8_t conn_handle)
+{
+  uint8_t instance_num;
+  if (get_instance_number(conn_handle, &instance_num) == SL_STATUS_OK) {
+    cs_initiator_instances[instance_num].rtl_process_error_count++;
+    return cs_initiator_instances[instance_num].rtl_process_error_count;
+  }
+
+  return 0u;
 }
 
 /******************************************************************************
@@ -515,7 +555,7 @@ static void cs_on_result(const uint8_t conn_handle,
   bool measurement_valid = true;
   bool velocity_valid = false;
   bool bit_error_rate_valid = false;
-  const bd_addr *reflector_address = ble_peer_manager_get_bt_address(conn_handle);
+  const bd_addr *reflector_address = get_reflector_address(conn_handle);
 
   if (reflector_address != NULL) {
     measurement_event.reflector_address = *reflector_address;
@@ -534,7 +574,8 @@ static void cs_on_result(const uint8_t conn_handle,
                                     "instance_lookup_failed",
                                     conn_handle,
                                     reflector_address,
-                                    sc);
+                                    sc,
+                                    0u);
       return;
     }
 
@@ -684,6 +725,7 @@ static void cs_on_result(const uint8_t conn_handle,
                                   "process_skipped",
                                   conn_handle,
                                   reflector_address,
+                                  0u,
                                   0u);
   }
 }
@@ -874,10 +916,13 @@ static void delete_initiator_instance(uint8_t conn_handle)
   for (uint32_t i = 0u; i < CS_INITIATOR_MAX_CONNECTIONS; i++) {
     if (cs_initiator_instances[i].conn_handle == conn_handle) {
       cs_initiator_instances[i].conn_handle = SL_BT_INVALID_CONNECTION_HANDLE;
+      memset(&cs_initiator_instances[i].reflector_address, 0u, sizeof(bd_addr));
       cs_initiator_instances[i].measurement_cnt = 0u;
       memset(&cs_initiator_instances[i].measurement_mainmode, 0u, sizeof(cs_measurement_data_t));
       memset(&cs_initiator_instances[i].measurement_submode, 0u, sizeof(cs_measurement_data_t));
       memset(&cs_initiator_instances[i].measurement_progress, 0u, sizeof(cs_intermediate_result_t));
+      cs_initiator_instances[i].rtl_process_error_count = 0u;
+      cs_initiator_instances[i].reflector_address_valid = false;
       cs_initiator_instances[i].measurement_progress_changed = false;
       cs_initiator_instances[i].read_remote_capabilities = false;
       cs_initiator_instances[i].security_increased = false;
@@ -918,11 +963,17 @@ static const char *cs_error_event_to_str(cs_error_event_t err_evt)
  *****************************************************************************/
 static void cs_on_error(uint8_t conn_handle, cs_error_event_t err_evt, sl_status_t sc)
 {
+  uint32_t error_count = 0u;
+  if (err_evt == CS_ERROR_EVENT_RTL_PROCESS_ERROR) {
+    error_count = increment_rtl_process_error_count(conn_handle);
+  }
+
   measurement_report_emit_error("cs",
                                 cs_error_event_to_str(err_evt),
                                 conn_handle,
-                                ble_peer_manager_get_bt_address(conn_handle),
-                                sc);
+                                get_reflector_address(conn_handle),
+                                sc,
+                                error_count);
 
   switch (err_evt) {
     // Assert
@@ -1236,6 +1287,7 @@ void sl_bt_on_event(sl_bt_msg_t * evt)
                                     "resource_exhausted",
                                     SL_BT_INVALID_CONNECTION_HANDLE,
                                     NULL,
+                                    evt->data.evt_system_resource_exhausted.num_buffers_discarded,
                                     evt->data.evt_system_resource_exhausted.num_buffers_discarded);
       break;
     default:
@@ -1264,11 +1316,12 @@ void sl_button_on_change(const sl_button_t *handle)
 void ble_peer_manager_on_event_initiator(ble_peer_manager_evt_type_t * event)
 {
   sl_status_t sc;
-  bd_addr *address;
+  const bd_addr *address;
 
   switch (event->evt_id) {
     case BLE_PEER_MANAGER_ON_CONN_OPENED_CENTRAL:
-      sc = save_connection(event->connection_id);
+      address = ble_peer_manager_get_bt_address(event->connection_id);
+      sc = save_connection(event->connection_id, address);
       if (sc != SL_STATUS_OK) {
         log_error(APP_INSTANCE_PREFIX "Error finding a slot for connection: "
                                       "dropping connection..." NL,
@@ -1276,7 +1329,6 @@ void ble_peer_manager_on_event_initiator(ble_peer_manager_evt_type_t * event)
         (void)ble_peer_manager_central_close_connection(event->connection_id);
         break;
       }
-      address = ble_peer_manager_get_bt_address(event->connection_id);
       log_info(APP_INSTANCE_PREFIX "Connection opened as central with CS Reflector"
                                    " '%02X:%02X:%02X:%02X:%02X:%02X'" NL,
                event->connection_id,
@@ -1295,7 +1347,7 @@ void ble_peer_manager_on_event_initiator(ble_peer_manager_evt_type_t * event)
       break;
     case BLE_PEER_MANAGER_ON_CONN_CLOSED:
       log_info(APP_INSTANCE_PREFIX "Connection closed" NL, event->connection_id);
-      address = ble_peer_manager_get_bt_address(event->connection_id);
+      address = get_reflector_address(event->connection_id);
       measurement_report_emit_anchor_down("connection_closed",
                                           event->connection_id,
                                           address);
@@ -1320,8 +1372,9 @@ void ble_peer_manager_on_event_initiator(ble_peer_manager_evt_type_t * event)
       measurement_report_emit_error("peer_manager",
                                     "event_error",
                                     event->connection_id,
-                                    ble_peer_manager_get_bt_address(event->connection_id),
-                                    event->evt_id);
+                                    get_reflector_address(event->connection_id),
+                                    event->evt_id,
+                                    0u);
       break;
 
     default:

@@ -60,7 +60,8 @@ void measurement_report_emit_error(const char *source,
                                    const char *detail,
                                    uint8_t conn_handle,
                                    const bd_addr *reflector_address,
-                                   uint32_t code);
+                                   uint32_t code,
+                                   uint32_t count);
 
 /**************************************************************************//**
  * Queue a measurement record for deferred reporting.
