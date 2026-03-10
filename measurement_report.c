@@ -160,7 +160,7 @@ void measurement_report_emit_measurement(const measurement_report_measurement_t 
 
   sl_iostream_printf(sl_iostream_recommended_console_stream,
                      CS_INITIATOR_REPORT_PREFIX
-                     "|type=MEAS|seq=%lu|conn=%u|addr=%s|meas=%lu|range_ctr=%u|dist=%.3f|raw=%.3f|like=%.3f|rssi_dist=%.3f|velocity_valid=%u|velocity=%.3f|ber_valid=%u|ber=%.3f|valid=%u\n",
+                     "|type=MEAS|seq=%lu|conn=%u|addr=%s|meas=%lu|range_ctr=%u|dist=%.3f|raw=%.3f|like=%.3f|rssi_dist=%.3f|rssi_dbm_valid=%u|rssi_dbm=%d|velocity_valid=%u|velocity=%.3f|ber_valid=%u|ber=%.3f|valid=%u\n",
                      (unsigned long)next_report_sequence(),
                      measurement->conn_handle,
                      address_buffer,
@@ -170,6 +170,8 @@ void measurement_report_emit_measurement(const measurement_report_measurement_t 
                      measurement->distance_raw,
                      measurement->likeliness,
                      measurement->distance_rssi,
+                     measurement->rssi_dbm_valid ? 1u : 0u,
+                     measurement->rssi_dbm,
                      measurement->velocity_valid ? 1u : 0u,
                      measurement->velocity,
                      measurement->bit_error_rate_valid ? 1u : 0u,

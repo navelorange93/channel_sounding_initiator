@@ -330,6 +330,7 @@ static void process_measurement_reports(void)
 
   while (measurement_report_queue_pop(&measurement)) {
     uint8_t instance_num;
+    int8_t rssi_dbm = 0;
     sl_status_t sc = get_instance_number(measurement.conn_handle, &instance_num);
     if (sc != SL_STATUS_OK) {
       measurement_report_emit_error("queue",
@@ -339,6 +340,15 @@ static void process_measurement_reports(void)
                                     sc,
                                     0u);
       continue;
+    }
+
+    sc = sl_bt_connection_get_median_rssi(measurement.conn_handle, &rssi_dbm);
+    if (sc == SL_STATUS_OK) {
+      measurement.rssi_dbm = rssi_dbm;
+      measurement.rssi_dbm_valid = true;
+    } else {
+      measurement.rssi_dbm = 0;
+      measurement.rssi_dbm_valid = false;
     }
 
 #if CS_INITIATOR_HUMAN_READABLE_MEASUREMENT_LOG

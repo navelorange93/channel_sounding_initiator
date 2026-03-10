@@ -14,8 +14,10 @@ typedef struct {
   float distance_raw;
   float likeliness;
   float distance_rssi;
+  int8_t rssi_dbm;
   float velocity;
   float bit_error_rate;
+  bool rssi_dbm_valid;
   bool velocity_valid;
   bool bit_error_rate_valid;
   bool valid;
