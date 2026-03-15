@@ -43,7 +43,7 @@
 // <i> Default: 2
 // <i> Define the maximum number of simultaneous procedures the CS device supports.
 #ifndef SL_BT_CONFIG_MAX_CS_PROCEDURES
-#define SL_BT_CONFIG_MAX_CS_PROCEDURES     3
+#define SL_BT_CONFIG_MAX_CS_PROCEDURES     4
 #endif
 
 // <o SL_BT_CONFIG_CS_SYNC_MAX_ANTENNAS> Max number of antennas used for CS sync packets <1-4>.

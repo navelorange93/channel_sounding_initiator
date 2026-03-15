@@ -172,7 +172,7 @@ configuration:
 - name: SL_STACK_SIZE
   value: '3496'
 - name: SL_BT_CONFIG_BUFFER_SIZE
-  value: '10000'
+  value: '22000'
 - name: SL_BT_CONFIG_MAX_CS_PROCEDURES
   value: '3'
 - name: BLE_PEER_MANAGER_CENTRAL_CONFIG_DEFAULT_SCAN_INTERVAL

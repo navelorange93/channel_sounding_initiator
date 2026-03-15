@@ -79,7 +79,7 @@
 // <i> If more than 1 initiator instances are created SL_BT_CONFIG_BUFFER_SIZE shall be increased.
 // <i> Start the tech demo stabilization phase with 3 reflectors before revisiting 4.
 #ifndef CS_INITIATOR_MAX_CONNECTIONS
-#define CS_INITIATOR_MAX_CONNECTIONS                  (3)
+#define CS_INITIATOR_MAX_CONNECTIONS                  (2)
 #endif
 
 // <o CS_INITIATOR_MAX_RANGING_DATA_SIZE> Maximum ranging data size <32..2500>
@@ -212,24 +212,24 @@
 
 // <o CS_INITIATOR_DEFAULT_MIN_CONNECTION_INTERVAL> Minimum connection interval (in 1.25 ms steps) <6..3200>
 // <i> Default: 6
-#define CS_INITIATOR_DEFAULT_MIN_CONNECTION_INTERVAL         24
+#define CS_INITIATOR_DEFAULT_MIN_CONNECTION_INTERVAL         12
 
 // <o CS_INITIATOR_DEFAULT_MAX_CONNECTION_INTERVAL> Maximum connection interval (in 1.25 ms steps) <6..3200>
 // <i> Default: 6
-#define CS_INITIATOR_DEFAULT_MAX_CONNECTION_INTERVAL         24
+#define CS_INITIATOR_DEFAULT_MAX_CONNECTION_INTERVAL         12
 
 // <o CS_INITIATOR_DEFAULT_MIN_PROCEDURE_INTERVAL> Minimum delay between CS measurements [connection events] <1..255>
 // <i> Default: 38
 // <i> Minimum duration in number of connection events between consecutive CS measurement procedures
 #ifndef CS_INITIATOR_DEFAULT_MIN_PROCEDURE_INTERVAL
-#define CS_INITIATOR_DEFAULT_MIN_PROCEDURE_INTERVAL                     (120)
+#define CS_INITIATOR_DEFAULT_MIN_PROCEDURE_INTERVAL                     (38)
 #endif
 
 // <o CS_INITIATOR_DEFAULT_MAX_PROCEDURE_INTERVAL> Maximum delay between CS measurements [connection events] <1..255>
 // <i> Default: 38
 // <i> Maximum duration in number of connection events between consecutive CS measurement procedures
 #ifndef CS_INITIATOR_DEFAULT_MAX_PROCEDURE_INTERVAL
-#define CS_INITIATOR_DEFAULT_MAX_PROCEDURE_INTERVAL                     (120)
+#define CS_INITIATOR_DEFAULT_MAX_PROCEDURE_INTERVAL                     (38)
 #endif
 
 // </h>
