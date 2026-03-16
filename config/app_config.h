@@ -77,7 +77,7 @@
 #define APP_RADIO_MODE_CS_INITIATOR           0
 #define APP_RADIO_MODE_BEACON_SCAN            1
 #ifndef APP_RADIO_MODE
-#define APP_RADIO_MODE                        APP_RADIO_MODE_BEACON_SCAN
+#define APP_RADIO_MODE                        APP_RADIO_MODE_CS_INITIATOR
 #endif
 
 // <o BEACON_SCAN_SCAN_TIME_MS> Beacon scan active time [ms] <0..60000>
@@ -89,7 +89,7 @@
 // <o BEACON_SCAN_SLEEP_TIME_MS> Beacon scan sleep time [ms] <0..60000>
 // <i> Set to zero for continuous scanning.
 #ifndef BEACON_SCAN_SLEEP_TIME_MS
-#define BEACON_SCAN_SLEEP_TIME_MS             1000
+#define BEACON_SCAN_SLEEP_TIME_MS             3000
 #endif
 
 // <o BEACON_SCAN_SCAN_INTERVAL> Beacon scan interval <4..65535>

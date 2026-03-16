@@ -42,6 +42,7 @@
 #include "app.h"
 #include "trace.h"
 #include "app_config.h"
+#include "app_mode.h"
 #include "app_timer.h"
 
 // initiator content
@@ -175,11 +176,12 @@ void app_init(void)
 {
   trace_init();
   measurement_report_init();
+  app_mode_init();
 
-#if APP_RADIO_MODE == APP_RADIO_MODE_BEACON_SCAN
-  beacon_scan_init();
-  return;
-#endif
+  if (app_mode_is_beacon_scan()) {
+    beacon_scan_init();
+    return;
+  }
 
   sl_status_t sc = SL_STATUS_OK;
 
@@ -268,10 +270,10 @@ void app_init(void)
  *****************************************************************************/
 void app_process_action(void)
 {
-#if APP_RADIO_MODE == APP_RADIO_MODE_BEACON_SCAN
-  beacon_scan_process_action();
-  return;
-#endif
+  if (app_mode_is_beacon_scan()) {
+    beacon_scan_process_action();
+    return;
+  }
 
   sl_status_t sc = security_send_confirmation();
   if (sc != SL_STATUS_OK) {
@@ -1107,50 +1109,59 @@ void sl_bt_on_event(sl_bt_msg_t * evt)
 {
   sl_status_t sc;
   uint8_t instance_num;
+  const app_mode_state_t *mode_state = app_mode_get_state();
+  const char *override_mode = mode_state->override_valid
+                              ? app_mode_to_str(mode_state->override_mode)
+                              : "none";
 
-#if APP_RADIO_MODE == APP_RADIO_MODE_BEACON_SCAN
-  switch (SL_BT_MSG_ID(evt->header)) {
-    case sl_bt_evt_system_boot_id:
-    {
-      int16_t min_tx_power_x10 = SYSTEM_MIN_TX_POWER_DBM * 10;
-      int16_t max_tx_power_x10 = SYSTEM_MAX_TX_POWER_DBM * 10;
-      bd_addr address;
-      uint8_t address_type;
+  if (app_mode_is_beacon_scan()) {
+    switch (SL_BT_MSG_ID(evt->header)) {
+      case sl_bt_evt_system_boot_id:
+      {
+        int16_t min_tx_power_x10 = SYSTEM_MIN_TX_POWER_DBM * 10;
+        int16_t max_tx_power_x10 = SYSTEM_MAX_TX_POWER_DBM * 10;
+        bd_addr address;
+        uint8_t address_type;
 
-      sc = sl_bt_system_set_tx_power(min_tx_power_x10,
-                                     max_tx_power_x10,
-                                     &min_tx_power_x10,
-                                     &max_tx_power_x10);
-      app_assert_status(sc);
+        sc = sl_bt_system_set_tx_power(min_tx_power_x10,
+                                       max_tx_power_x10,
+                                       &min_tx_power_x10,
+                                       &max_tx_power_x10);
+        app_assert_status(sc);
 
-      sc = sl_bt_gap_get_identity_address(&address, &address_type);
-      app_assert_status(sc);
+        sc = sl_bt_gap_get_identity_address(&address, &address_type);
+        app_assert_status(sc);
 
-      sc = beacon_scan_handle_boot(&address, address_type);
-      app_assert_status(sc);
-      break;
+        measurement_report_emit_app_mode("boot",
+                                         app_mode_to_str(mode_state->active_mode),
+                                         app_mode_to_str(mode_state->default_mode),
+                                         override_mode,
+                                         app_mode_source_to_str(mode_state->source));
+        sc = beacon_scan_handle_boot(&address, address_type);
+        app_assert_status(sc);
+        break;
+      }
+
+      case sl_bt_evt_scanner_legacy_advertisement_report_id:
+        beacon_scan_handle_legacy_report(&evt->data.evt_scanner_legacy_advertisement_report);
+        break;
+
+      case sl_bt_evt_scanner_extended_advertisement_report_id:
+        beacon_scan_handle_extended_report(&evt->data.evt_scanner_extended_advertisement_report);
+        break;
+
+      case sl_bt_evt_system_resource_exhausted_id:
+        measurement_report_emit_beacon_error("system",
+                                             "resource_exhausted",
+                                             evt->data.evt_system_resource_exhausted.num_buffers_discarded,
+                                             evt->data.evt_system_resource_exhausted.num_buffers_discarded);
+        break;
+
+      default:
+        break;
     }
-
-    case sl_bt_evt_scanner_legacy_advertisement_report_id:
-      beacon_scan_handle_legacy_report(&evt->data.evt_scanner_legacy_advertisement_report);
-      break;
-
-    case sl_bt_evt_scanner_extended_advertisement_report_id:
-      beacon_scan_handle_extended_report(&evt->data.evt_scanner_extended_advertisement_report);
-      break;
-
-    case sl_bt_evt_system_resource_exhausted_id:
-      measurement_report_emit_beacon_error("system",
-                                           "resource_exhausted",
-                                           evt->data.evt_system_resource_exhausted.num_buffers_discarded,
-                                           evt->data.evt_system_resource_exhausted.num_buffers_discarded);
-      break;
-
-    default:
-      break;
+    return;
   }
-  return;
-#endif
 
   const char* device_name = REFLECTOR_DEVICE_NAME;
 
@@ -1195,6 +1206,11 @@ void sl_bt_on_event(sl_bt_msg_t * evt)
                address.addr[1],
                address.addr[0]);
 
+      measurement_report_emit_app_mode("boot",
+                                       app_mode_to_str(mode_state->active_mode),
+                                       app_mode_to_str(mode_state->default_mode),
+                                       override_mode,
+                                       app_mode_source_to_str(mode_state->source));
       measurement_report_emit_boot(&address,
                                    address_type,
                                    CS_INITIATOR_MAX_CONNECTIONS,

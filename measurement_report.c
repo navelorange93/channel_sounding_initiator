@@ -18,6 +18,10 @@
 #define BEACON_SCAN_REPORT_PREFIX "BLE_EVT"
 #endif
 
+#ifndef APP_REPORT_PREFIX
+#define APP_REPORT_PREFIX "APP_EVT"
+#endif
+
 static measurement_report_measurement_t measurement_queue[CS_INITIATOR_REPORT_QUEUE_SIZE];
 static uint8_t measurement_queue_head = 0u;
 static uint8_t measurement_queue_tail = 0u;
@@ -90,6 +94,31 @@ void measurement_report_emit_beacon_boot(const bd_addr *initiator_address,
                      (unsigned long)sleep_time_ms,
                      scan_interval,
                      scan_window);
+}
+
+void measurement_report_emit_app_mode(const char *action,
+                                      const char *active_mode,
+                                      const char *default_mode,
+                                      const char *override_mode,
+                                      const char *source)
+{
+  if (action == NULL
+      || active_mode == NULL
+      || default_mode == NULL
+      || override_mode == NULL
+      || source == NULL) {
+    return;
+  }
+
+  sl_iostream_printf(sl_iostream_recommended_console_stream,
+                     APP_REPORT_PREFIX
+                     "|type=MODE|seq=%lu|action=%s|active=%s|default=%s|override=%s|source=%s\n",
+                     (unsigned long)next_report_sequence(),
+                     action,
+                     active_mode,
+                     default_mode,
+                     override_mode,
+                     source);
 }
 
 void measurement_report_emit_anchor_up(const char *stage,

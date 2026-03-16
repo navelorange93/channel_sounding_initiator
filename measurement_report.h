@@ -66,6 +66,15 @@ void measurement_report_emit_beacon_boot(const bd_addr *initiator_address,
                                          uint16_t scan_window);
 
 /**************************************************************************//**
+ * Emit a structured application mode record.
+ *****************************************************************************/
+void measurement_report_emit_app_mode(const char *action,
+                                      const char *active_mode,
+                                      const char *default_mode,
+                                      const char *override_mode,
+                                      const char *source);
+
+/**************************************************************************//**
  * Emit a structured reflector lifecycle record.
  *****************************************************************************/
 void measurement_report_emit_anchor_up(const char *stage,

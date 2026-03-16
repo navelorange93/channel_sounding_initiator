@@ -13,6 +13,7 @@ project(
 include(bt_cs_soc_initiator.cmake)
 
 add_executable(bt_cs_soc_initiator
+    ../app_mode.c
     ../beacon_scan.c
     ../measurement_report.c
 )
