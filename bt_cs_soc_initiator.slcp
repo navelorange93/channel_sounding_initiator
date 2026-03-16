@@ -20,6 +20,7 @@ readme:
 - path: readme.md
 source:
 - path: app.c
+- path: beacon_scan.c
 - path: measurement_report.c
 - path: rtl_log.c
 - path: trace.c
@@ -35,6 +36,7 @@ include:
 - path: .
   file_list:
   - path: app.h
+  - path: beacon_scan.h
   - path: measurement_report.h
   - path: rtl_log.h
   - path: trace.h

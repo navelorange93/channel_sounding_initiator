@@ -14,6 +14,10 @@
 #define CS_INITIATOR_REPORT_PREFIX "CS_EVT"
 #endif
 
+#ifndef BEACON_SCAN_REPORT_PREFIX
+#define BEACON_SCAN_REPORT_PREFIX "BLE_EVT"
+#endif
+
 static measurement_report_measurement_t measurement_queue[CS_INITIATOR_REPORT_QUEUE_SIZE];
 static uint8_t measurement_queue_head = 0u;
 static uint8_t measurement_queue_tail = 0u;
@@ -23,6 +27,7 @@ static uint32_t report_sequence_number = 0u;
 
 static uint32_t next_report_sequence(void);
 static void format_address(const bd_addr *address, char *buffer, size_t buffer_len);
+static void format_uuid(const uint8_t *uuid, char *buffer, size_t buffer_len);
 static const char *mode_to_str(uint8_t mode);
 static const char *sub_mode_to_str(uint8_t sub_mode);
 static const char *address_type_to_str(uint8_t address_type);
@@ -63,6 +68,28 @@ void measurement_report_emit_boot(const bd_addr *initiator_address,
                      connection_interval,
                      procedure_interval,
                      channel_map_preset);
+}
+
+void measurement_report_emit_beacon_boot(const bd_addr *initiator_address,
+                                         uint8_t address_type,
+                                         uint32_t scan_time_ms,
+                                         uint32_t sleep_time_ms,
+                                         uint16_t scan_interval,
+                                         uint16_t scan_window)
+{
+  char address_buffer[18];
+  format_address(initiator_address, address_buffer, sizeof(address_buffer));
+
+  sl_iostream_printf(sl_iostream_recommended_console_stream,
+                     BEACON_SCAN_REPORT_PREFIX
+                     "|type=BOOT|seq=%lu|mode=beacon_scan|addr=%s|addr_type=%s|scan_time_ms=%lu|sleep_time_ms=%lu|scan_interval=%u|scan_window=%u\n",
+                     (unsigned long)next_report_sequence(),
+                     address_buffer,
+                     address_type_to_str(address_type),
+                     (unsigned long)scan_time_ms,
+                     (unsigned long)sleep_time_ms,
+                     scan_interval,
+                     scan_window);
 }
 
 void measurement_report_emit_anchor_up(const char *stage,
@@ -115,6 +142,21 @@ void measurement_report_emit_error(const char *source,
                      detail,
                      conn_handle,
                      address_buffer,
+                     (unsigned long)code,
+                     (unsigned long)count);
+}
+
+void measurement_report_emit_beacon_error(const char *source,
+                                          const char *detail,
+                                          uint32_t code,
+                                          uint32_t count)
+{
+  sl_iostream_printf(sl_iostream_recommended_console_stream,
+                     BEACON_SCAN_REPORT_PREFIX
+                     "|type=ERROR|seq=%lu|source=%s|detail=%s|code=0x%08lx|count=%lu\n",
+                     (unsigned long)next_report_sequence(),
+                     source,
+                     detail,
                      (unsigned long)code,
                      (unsigned long)count);
 }
@@ -179,6 +221,37 @@ void measurement_report_emit_measurement(const measurement_report_measurement_t 
                      measurement->valid ? 1u : 0u);
 }
 
+void measurement_report_emit_beacon_scan(const measurement_report_beacon_t *beacon,
+                                         const char *format_name)
+{
+  char address_buffer[18];
+  char uuid_buffer[37];
+
+  if (beacon == NULL || format_name == NULL) {
+    return;
+  }
+
+  format_address(&beacon->address, address_buffer, sizeof(address_buffer));
+  format_uuid(beacon->uuid, uuid_buffer, sizeof(uuid_buffer));
+
+  sl_iostream_printf(sl_iostream_recommended_console_stream,
+                     BEACON_SCAN_REPORT_PREFIX
+                     "|type=SCAN|seq=%lu|addr=%s|format=%s|rssi=%d|channel=%u|addr_type=%s|company_id_valid=%u|company_id=0x%04X|uuid_valid=%u|uuid=%s|tx_power_valid=%u|tx_power=%d|pdu=%s\n",
+                     (unsigned long)next_report_sequence(),
+                     address_buffer,
+                     format_name,
+                     beacon->rssi_dbm,
+                     beacon->channel,
+                     address_type_to_str(beacon->address_type),
+                     beacon->company_id_valid ? 1u : 0u,
+                     beacon->company_id,
+                     beacon->uuid_valid ? 1u : 0u,
+                     uuid_buffer,
+                     beacon->tx_power_valid ? 1u : 0u,
+                     beacon->tx_power_dbm,
+                     beacon->extended ? "extended" : "legacy");
+}
+
 uint32_t measurement_report_take_dropped_count(void)
 {
   uint32_t count = dropped_measurement_count;
@@ -210,6 +283,34 @@ static void format_address(const bd_addr *address, char *buffer, size_t buffer_l
                  address->addr[0]);
 }
 
+static void format_uuid(const uint8_t *uuid, char *buffer, size_t buffer_len)
+{
+  if (uuid == NULL) {
+    (void)snprintf(buffer, buffer_len, "00000000-0000-0000-0000-000000000000");
+    return;
+  }
+
+  (void)snprintf(buffer,
+                 buffer_len,
+                 "%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%02X%02X",
+                 uuid[0],
+                 uuid[1],
+                 uuid[2],
+                 uuid[3],
+                 uuid[4],
+                 uuid[5],
+                 uuid[6],
+                 uuid[7],
+                 uuid[8],
+                 uuid[9],
+                 uuid[10],
+                 uuid[11],
+                 uuid[12],
+                 uuid[13],
+                 uuid[14],
+                 uuid[15]);
+}
+
 static const char *mode_to_str(uint8_t mode)
 {
   return (mode == sl_bt_cs_mode_pbr) ? "pbr" : "rtt";
@@ -222,6 +323,23 @@ static const char *sub_mode_to_str(uint8_t sub_mode)
 
 static const char *address_type_to_str(uint8_t address_type)
 {
-  return address_type ? "static_random" : "public";
+  switch (address_type) {
+    case 0:
+      return "public";
+    case 1:
+      return "static_random";
+    case 2:
+      return "rpa";
+    case 3:
+      return "nrpa";
+    case 4:
+      return "public_identity";
+    case 5:
+      return "static_identity";
+    case 0xFF:
+      return "anonymous";
+    default:
+      return "unknown";
+  }
 }
 

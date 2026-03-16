@@ -69,6 +69,50 @@
 #define CS_INITIATOR_REPORT_QUEUE_SIZE        16
 #endif
 
+// <h> Initiator runtime mode
+
+// <o APP_RADIO_MODE> Default runtime mode
+// <APP_RADIO_MODE_CS_INITIATOR=> Channel sounding initiator
+// <APP_RADIO_MODE_BEACON_SCAN=> Beacon scan
+#define APP_RADIO_MODE_CS_INITIATOR           0
+#define APP_RADIO_MODE_BEACON_SCAN            1
+#ifndef APP_RADIO_MODE
+#define APP_RADIO_MODE                        APP_RADIO_MODE_BEACON_SCAN
+#endif
+
+// <o BEACON_SCAN_SCAN_TIME_MS> Beacon scan active time [ms] <0..60000>
+// <i> When sleep time is zero the scanner stays active continuously.
+#ifndef BEACON_SCAN_SCAN_TIME_MS
+#define BEACON_SCAN_SCAN_TIME_MS              1000
+#endif
+
+// <o BEACON_SCAN_SLEEP_TIME_MS> Beacon scan sleep time [ms] <0..60000>
+// <i> Set to zero for continuous scanning.
+#ifndef BEACON_SCAN_SLEEP_TIME_MS
+#define BEACON_SCAN_SLEEP_TIME_MS             1000
+#endif
+
+// <o BEACON_SCAN_SCAN_INTERVAL> Beacon scan interval <4..65535>
+// <i> Time = Value x 0.625 ms
+#ifndef BEACON_SCAN_SCAN_INTERVAL
+#define BEACON_SCAN_SCAN_INTERVAL             21
+#endif
+
+// <o BEACON_SCAN_SCAN_WINDOW> Beacon scan window <4..65535>
+// <i> Time = Value x 0.625 ms. Must be less than or equal to interval.
+#ifndef BEACON_SCAN_SCAN_WINDOW
+#define BEACON_SCAN_SCAN_WINDOW               21
+#endif
+
+// <o BEACON_SCAN_DISCOVER_MODE> Beacon discover mode
+// <sl_bt_scanner_discover_generic=> Generic
+// <sl_bt_scanner_discover_observation=> Observation
+#ifndef BEACON_SCAN_DISCOVER_MODE
+#define BEACON_SCAN_DISCOVER_MODE             sl_bt_scanner_discover_observation
+#endif
+
+// </h>
+
 // <s CS_INITIATOR_DEVICE_NAME> Device name
 // <i> Default: "CS RFLCT"
 #ifndef REFLECTOR_DEVICE_NAME
