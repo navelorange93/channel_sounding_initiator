@@ -29,8 +29,12 @@ typedef struct {
   int8_t rssi_dbm;
   uint8_t channel;
   uint16_t company_id;
+  uint8_t vendor_type;
+  uint32_t device_id;
   int8_t tx_power_dbm;
   bool company_id_valid;
+  bool vendor_type_valid;
+  bool device_id_valid;
   bool uuid_valid;
   bool tx_power_valid;
   bool extended;
@@ -73,6 +77,29 @@ void measurement_report_emit_app_mode(const char *action,
                                       const char *default_mode,
                                       const char *override_mode,
                                       const char *source);
+
+/**************************************************************************//**
+ * Emit a structured application mode switch record.
+ *****************************************************************************/
+void measurement_report_emit_app_mode_switch(const char *action,
+                                             const char *from_mode,
+                                             const char *to_mode,
+                                             const char *via,
+                                             bool reset_required);
+
+/**************************************************************************//**
+ * Emit a structured application error record.
+ *****************************************************************************/
+void measurement_report_emit_app_error(const char *source,
+                                       const char *detail,
+                                       uint32_t code);
+
+/**************************************************************************//**
+ * Emit a structured application command record.
+ *****************************************************************************/
+void measurement_report_emit_app_command(const char *action,
+                                         const char *command,
+                                         uint32_t length);
 
 /**************************************************************************//**
  * Emit a structured reflector lifecycle record.

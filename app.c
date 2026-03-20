@@ -44,6 +44,7 @@
 #include "app_config.h"
 #include "app_mode.h"
 #include "app_timer.h"
+#include "serial_command.h"
 
 // initiator content
 #include "cs_antenna.h"
@@ -149,6 +150,7 @@ static void check_cli_values(void);
 static sl_status_t create_new_initiator_instance(uint8_t conn_handle);
 static void delete_initiator_instance(uint8_t conn_handle);
 static void app_timer_callback(app_timer_t *timer, void *data);
+static void prepare_cs_mode(void);
 static void check_supported_capabilities(const sl_bt_msg_t *evt);
 static const char *cs_error_event_to_str(cs_error_event_t err_evt);
 static void process_measurement_reports(void);
@@ -177,13 +179,8 @@ void app_init(void)
   trace_init();
   measurement_report_init();
   app_mode_init();
-
-  if (app_mode_is_beacon_scan()) {
-    beacon_scan_init();
-    return;
-  }
-
-  sl_status_t sc = SL_STATUS_OK;
+  serial_command_init();
+  beacon_scan_init();
 
   // initialize initiator instances
   for (uint32_t i = 0u; i < CS_INITIATOR_MAX_CONNECTIONS; i++) {
@@ -203,62 +200,6 @@ void app_init(void)
   }
   security_set_config_flags();
 
-  // Set configuration parameters
-  rtl_config.algo_mode = get_algo_mode();
-  cs_initiator_apply_channel_map_preset(initiator_config.channel_map_preset,
-                                        initiator_config.channel_map.data);
-
-  if ((initiator_config.cs_main_mode == sl_bt_cs_mode_pbr)
-      && (initiator_config.cs_sub_mode == sl_bt_cs_mode_rtt)) {
-    // Currently, only main mode = pbr and submode = rtt is supported
-    initiator_config.channel_map_preset = CS_CHANNEL_MAP_PRESET_HIGH;
-    app_log_info(APP_PREFIX "Channel map preset set to high" APP_LOG_NL);
-  }
-
-  // Log configuration parameters
-  log_info("+-[CS initiator by Silicon Labs]--------------------------+" NL);
-  log_info("+---------------------------------------------------------+" NL);
-  if (initiator_config.procedure_scheduling != CS_PROCEDURE_SCHEDULING_CUSTOM) {
-    log_info(APP_PREFIX "Using %s based procedure scheduling." NL,
-             initiator_config.procedure_scheduling == CS_PROCEDURE_SCHEDULING_OPTIMIZED_FOR_FREQUENCY
-             ? "frequency update" : "energy consumption");
-  } else {
-    log_info(APP_PREFIX "Using custom procedure scheduling." NL);
-  }
-  log_info(APP_PREFIX "%s" NL,
-           (initiator_config.max_procedure_count == 0) ? "Free running." : "Start new procedure after one finished.");
-  log_info(APP_PREFIX "Antenna offset: wire%s" NL,
-           CS_INITIATOR_ANTENNA_OFFSET ? "d" : "less");
-  log_info(APP_PREFIX "Default CS procedure interval: %u" NL, initiator_config.min_procedure_interval);
-  log_info(APP_PREFIX "CS main mode: %s (%u)" NL,
-           (initiator_config.cs_main_mode == sl_bt_cs_mode_pbr) ? "PBR" : "RTT",
-           initiator_config.cs_main_mode);
-  log_info(APP_PREFIX "CS sub mode: %s (%u)" NL,
-           (initiator_config.cs_sub_mode == sl_bt_cs_submode_disabled) ? "Disabled" : "RTT",
-           initiator_config.cs_sub_mode);
-  log_info(APP_PREFIX "Requested antenna usage: %s" NL, antenna_usage_to_str(&initiator_config));
-  log_info(APP_PREFIX "Object tracking mode: %s" NL, algo_mode_to_str(rtl_config.algo_mode));
-  log_info(APP_PREFIX "CS channel map preset: %d" NL, initiator_config.channel_map_preset);
-  log_info(APP_PREFIX "CS channel map: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X" NL,
-           initiator_config.channel_map.data[0],
-           initiator_config.channel_map.data[1],
-           initiator_config.channel_map.data[2],
-           initiator_config.channel_map.data[3],
-           initiator_config.channel_map.data[4],
-           initiator_config.channel_map.data[5],
-           initiator_config.channel_map.data[6],
-           initiator_config.channel_map.data[7],
-           initiator_config.channel_map.data[8],
-           initiator_config.channel_map.data[9]);
-  log_info(APP_PREFIX "RSSI reference TX power @ 1m: %d dBm" NL,
-           (int)initiator_config.rssi_ref_tx_power);
-  log_info("+-------------------------------------------------------+" NL);
-
-  sc = cs_initiator_display_init();
-  app_assert_status_f(sc, "cs_initiator_display_init failed");
-  cs_initiator_display_set_measurement_mode(initiator_config.cs_main_mode, rtl_config.algo_mode);
-  app_timer_start(&display_timer, DISPLAY_REFRESH_RATE, app_timer_callback, NULL, true);
-
   /////////////////////////////////////////////////////////////////////////////
   // Put your additional application init code here!                         //
   // This is called once during start-up.                                    //
@@ -270,6 +211,9 @@ void app_init(void)
  *****************************************************************************/
 void app_process_action(void)
 {
+  serial_command_process_action();
+  app_mode_process_action();
+
   if (app_mode_is_beacon_scan()) {
     beacon_scan_process_action();
     return;
@@ -325,6 +269,65 @@ static void app_timer_callback(app_timer_t *timer, void *data)
   (void)timer;
   (void)data;
   cs_initiator_display_update();
+}
+
+static void prepare_cs_mode(void)
+{
+  sl_status_t sc;
+
+  // Set configuration parameters only when CS mode is active.
+  rtl_config.algo_mode = get_algo_mode();
+  cs_initiator_apply_channel_map_preset(initiator_config.channel_map_preset,
+                                        initiator_config.channel_map.data);
+
+  if ((initiator_config.cs_main_mode == sl_bt_cs_mode_pbr)
+      && (initiator_config.cs_sub_mode == sl_bt_cs_mode_rtt)) {
+    initiator_config.channel_map_preset = CS_CHANNEL_MAP_PRESET_HIGH;
+    app_log_info(APP_PREFIX "Channel map preset set to high" APP_LOG_NL);
+  }
+
+  log_info("+-[CS initiator by Silicon Labs]--------------------------+" NL);
+  log_info("+---------------------------------------------------------+" NL);
+  if (initiator_config.procedure_scheduling != CS_PROCEDURE_SCHEDULING_CUSTOM) {
+    log_info(APP_PREFIX "Using %s based procedure scheduling." NL,
+             initiator_config.procedure_scheduling == CS_PROCEDURE_SCHEDULING_OPTIMIZED_FOR_FREQUENCY
+             ? "frequency update" : "energy consumption");
+  } else {
+    log_info(APP_PREFIX "Using custom procedure scheduling." NL);
+  }
+  log_info(APP_PREFIX "%s" NL,
+           (initiator_config.max_procedure_count == 0) ? "Free running." : "Start new procedure after one finished.");
+  log_info(APP_PREFIX "Antenna offset: wire%s" NL,
+           CS_INITIATOR_ANTENNA_OFFSET ? "d" : "less");
+  log_info(APP_PREFIX "Default CS procedure interval: %u" NL, initiator_config.min_procedure_interval);
+  log_info(APP_PREFIX "CS main mode: %s (%u)" NL,
+           (initiator_config.cs_main_mode == sl_bt_cs_mode_pbr) ? "PBR" : "RTT",
+           initiator_config.cs_main_mode);
+  log_info(APP_PREFIX "CS sub mode: %s (%u)" NL,
+           (initiator_config.cs_sub_mode == sl_bt_cs_submode_disabled) ? "Disabled" : "RTT",
+           initiator_config.cs_sub_mode);
+  log_info(APP_PREFIX "Requested antenna usage: %s" NL, antenna_usage_to_str(&initiator_config));
+  log_info(APP_PREFIX "Object tracking mode: %s" NL, algo_mode_to_str(rtl_config.algo_mode));
+  log_info(APP_PREFIX "CS channel map preset: %d" NL, initiator_config.channel_map_preset);
+  log_info(APP_PREFIX "CS channel map: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X" NL,
+           initiator_config.channel_map.data[0],
+           initiator_config.channel_map.data[1],
+           initiator_config.channel_map.data[2],
+           initiator_config.channel_map.data[3],
+           initiator_config.channel_map.data[4],
+           initiator_config.channel_map.data[5],
+           initiator_config.channel_map.data[6],
+           initiator_config.channel_map.data[7],
+           initiator_config.channel_map.data[8],
+           initiator_config.channel_map.data[9]);
+  log_info(APP_PREFIX "RSSI reference TX power @ 1m: %d dBm" NL,
+           (int)initiator_config.rssi_ref_tx_power);
+  log_info("+-------------------------------------------------------+" NL);
+
+  sc = cs_initiator_display_init();
+  app_assert_status_f(sc, "cs_initiator_display_init failed");
+  cs_initiator_display_set_measurement_mode(initiator_config.cs_main_mode, rtl_config.algo_mode);
+  app_timer_start(&display_timer, DISPLAY_REFRESH_RATE, app_timer_callback, NULL, true);
 }
 
 static void process_measurement_reports(void)
@@ -1109,10 +1112,17 @@ void sl_bt_on_event(sl_bt_msg_t * evt)
 {
   sl_status_t sc;
   uint8_t instance_num;
-  const app_mode_state_t *mode_state = app_mode_get_state();
-  const char *override_mode = mode_state->override_valid
-                              ? app_mode_to_str(mode_state->override_mode)
-                              : "none";
+  const app_mode_state_t *mode_state;
+  const char *override_mode;
+
+  if (SL_BT_MSG_ID(evt->header) == sl_bt_evt_system_boot_id) {
+    (void)app_mode_handle_system_boot();
+  }
+
+  mode_state = app_mode_get_state();
+  override_mode = mode_state->override_valid
+                  ? app_mode_to_str(mode_state->override_mode)
+                  : "none";
 
   if (app_mode_is_beacon_scan()) {
     switch (SL_BT_MSG_ID(evt->header)) {
@@ -1186,6 +1196,8 @@ void sl_bt_on_event(sl_bt_msg_t * evt)
       app_assert_status(sc);
       log_info(APP_PREFIX "Minimum system TX power is set to: %d dBm" NL, min_tx_power_x10 / 10);
       log_info(APP_PREFIX "Maximum system TX power is set to: %d dBm" NL, max_tx_power_x10 / 10);
+
+      prepare_cs_mode();
 
       // Reset to initial state
       ble_peer_manager_central_init();

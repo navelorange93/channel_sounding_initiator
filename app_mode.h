@@ -2,6 +2,8 @@
 #define APP_MODE_H
 
 #include <stdbool.h>
+#include "sl_bt_api.h"
+#include "sl_status.h"
 
 typedef enum {
   APP_MODE_CS_INITIATOR = 0,
@@ -10,6 +12,8 @@ typedef enum {
 
 typedef enum {
   APP_MODE_SOURCE_CONFIG = 0,
+  APP_MODE_SOURCE_SERIAL,
+  APP_MODE_SOURCE_BUTTON,
 } app_mode_source_t;
 
 typedef struct {
@@ -26,6 +30,11 @@ typedef struct {
 void app_mode_init(void);
 
 /**************************************************************************//**
+ * Resolve the active mode once the Bluetooth stack is ready.
+ *****************************************************************************/
+sl_status_t app_mode_handle_system_boot(void);
+
+/**************************************************************************//**
  * Return the current mode selection state.
  *****************************************************************************/
 const app_mode_state_t *app_mode_get_state(void);
@@ -34,6 +43,21 @@ const app_mode_state_t *app_mode_get_state(void);
  * Return true when beacon scan mode is active.
  *****************************************************************************/
 bool app_mode_is_beacon_scan(void);
+
+/**************************************************************************//**
+ * Request switching to the given mode and reboot.
+ *****************************************************************************/
+sl_status_t app_mode_request_switch(app_mode_t mode, app_mode_source_t source);
+
+/**************************************************************************//**
+ * Clear any persisted override and reboot into the config default.
+ *****************************************************************************/
+sl_status_t app_mode_clear_override(app_mode_source_t source);
+
+/**************************************************************************//**
+ * Reboot when a mode change is pending.
+ *****************************************************************************/
+void app_mode_process_action(void);
 
 /**************************************************************************//**
  * Convert a mode enum to its wire-format string.

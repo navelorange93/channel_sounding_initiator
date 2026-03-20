@@ -8,14 +8,19 @@
 
 #define AD_TYPE_MANUFACTURER_SPECIFIC_DATA 0xFFu
 #define APPLE_COMPANY_ID                   0x004Cu
+#define SILABS_DEMO_COMPANY_ID             0x0852u
 #define IBEACON_TYPE                       0x02u
 #define IBEACON_LENGTH                     0x15u
 
 typedef struct {
   const char *format_name;
   uint16_t company_id;
+  uint8_t vendor_type;
+  uint32_t device_id;
   int8_t tx_power_dbm;
   bool company_id_valid;
+  bool vendor_type_valid;
+  bool device_id_valid;
   bool uuid_valid;
   bool tx_power_valid;
   uint8_t uuid[16];
@@ -233,6 +238,17 @@ static void parse_advertisement_data(const uint8_t *data,
         payload_info->tx_power_valid = true;
         return;
       }
+
+      if (payload_info->company_id == SILABS_DEMO_COMPANY_ID
+          && manufacturer_len >= 7u) {
+        payload_info->vendor_type = field_data[2];
+        payload_info->vendor_type_valid = true;
+        payload_info->device_id = (uint32_t)field_data[3]
+                                  | ((uint32_t)field_data[4] << 8)
+                                  | ((uint32_t)field_data[5] << 16)
+                                  | ((uint32_t)field_data[6] << 24);
+        payload_info->device_id_valid = true;
+      }
     }
 
     offset += field_total_len;
@@ -260,8 +276,12 @@ static void emit_beacon_scan_event(const bd_addr *address,
   beacon_event.rssi_dbm = rssi_dbm;
   beacon_event.channel = channel;
   beacon_event.company_id = payload_info.company_id;
+  beacon_event.vendor_type = payload_info.vendor_type;
+  beacon_event.device_id = payload_info.device_id;
   beacon_event.tx_power_dbm = payload_info.tx_power_dbm;
   beacon_event.company_id_valid = payload_info.company_id_valid;
+  beacon_event.vendor_type_valid = payload_info.vendor_type_valid;
+  beacon_event.device_id_valid = payload_info.device_id_valid;
   beacon_event.uuid_valid = payload_info.uuid_valid;
   beacon_event.tx_power_valid = payload_info.tx_power_valid;
   beacon_event.extended = extended;

@@ -121,6 +121,64 @@ void measurement_report_emit_app_mode(const char *action,
                      source);
 }
 
+void measurement_report_emit_app_mode_switch(const char *action,
+                                             const char *from_mode,
+                                             const char *to_mode,
+                                             const char *via,
+                                             bool reset_required)
+{
+  if (action == NULL
+      || from_mode == NULL
+      || to_mode == NULL
+      || via == NULL) {
+    return;
+  }
+
+  sl_iostream_printf(sl_iostream_recommended_console_stream,
+                     APP_REPORT_PREFIX
+                     "|type=MODE|seq=%lu|action=%s|from=%s|to=%s|via=%s|reset=%u\n",
+                     (unsigned long)next_report_sequence(),
+                     action,
+                     from_mode,
+                     to_mode,
+                     via,
+                     reset_required ? 1u : 0u);
+}
+
+void measurement_report_emit_app_error(const char *source,
+                                       const char *detail,
+                                       uint32_t code)
+{
+  if (source == NULL || detail == NULL) {
+    return;
+  }
+
+  sl_iostream_printf(sl_iostream_recommended_console_stream,
+                     APP_REPORT_PREFIX
+                     "|type=ERROR|seq=%lu|source=%s|detail=%s|code=0x%08lx\n",
+                     (unsigned long)next_report_sequence(),
+                     source,
+                     detail,
+                     (unsigned long)code);
+}
+
+void measurement_report_emit_app_command(const char *action,
+                                         const char *command,
+                                         uint32_t length)
+{
+  if (action == NULL || command == NULL) {
+    return;
+  }
+
+  sl_iostream_printf(sl_iostream_recommended_console_stream,
+                     APP_REPORT_PREFIX
+                     "|type=CMD|seq=%lu|action=%s|len=%lu|command=%s\n",
+                     (unsigned long)next_report_sequence(),
+                     action,
+                     (unsigned long)length,
+                     command);
+}
+
 void measurement_report_emit_anchor_up(const char *stage,
                                        uint8_t conn_handle,
                                        const bd_addr *reflector_address)
@@ -265,7 +323,7 @@ void measurement_report_emit_beacon_scan(const measurement_report_beacon_t *beac
 
   sl_iostream_printf(sl_iostream_recommended_console_stream,
                      BEACON_SCAN_REPORT_PREFIX
-                     "|type=SCAN|seq=%lu|addr=%s|format=%s|rssi=%d|channel=%u|addr_type=%s|company_id_valid=%u|company_id=0x%04X|uuid_valid=%u|uuid=%s|tx_power_valid=%u|tx_power=%d|pdu=%s\n",
+                     "|type=SCAN|seq=%lu|addr=%s|format=%s|rssi=%d|channel=%u|addr_type=%s|company_id_valid=%u|company_id=0x%04X|vendor_type_valid=%u|vendor_type=0x%02X|device_id_valid=%u|device_id=0x%08lX|uuid_valid=%u|uuid=%s|tx_power_valid=%u|tx_power=%d|pdu=%s\n",
                      (unsigned long)next_report_sequence(),
                      address_buffer,
                      format_name,
@@ -274,6 +332,10 @@ void measurement_report_emit_beacon_scan(const measurement_report_beacon_t *beac
                      address_type_to_str(beacon->address_type),
                      beacon->company_id_valid ? 1u : 0u,
                      beacon->company_id,
+                     beacon->vendor_type_valid ? 1u : 0u,
+                     beacon->vendor_type,
+                     beacon->device_id_valid ? 1u : 0u,
+                     (unsigned long)beacon->device_id,
                      beacon->uuid_valid ? 1u : 0u,
                      uuid_buffer,
                      beacon->tx_power_valid ? 1u : 0u,

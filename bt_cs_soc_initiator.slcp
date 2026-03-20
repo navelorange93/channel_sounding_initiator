@@ -24,6 +24,7 @@ source:
 - path: beacon_scan.c
 - path: measurement_report.c
 - path: rtl_log.c
+- path: serial_command.c
 - path: trace.c
 - path: security.c
 tag:
@@ -41,6 +42,7 @@ include:
   - path: beacon_scan.h
   - path: measurement_report.h
   - path: rtl_log.h
+  - path: serial_command.h
   - path: trace.h
   - path: security.h
 sdk:

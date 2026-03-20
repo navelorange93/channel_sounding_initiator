@@ -16,6 +16,7 @@ add_executable(bt_cs_soc_initiator
     ../app_mode.c
     ../beacon_scan.c
     ../measurement_report.c
+    ../serial_command.c
 )
 
 target_include_directories(bt_cs_soc_initiator PUBLIC

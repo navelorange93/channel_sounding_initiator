@@ -65,7 +65,7 @@
 // <SL_IOSTREAM_EUSART_UART_FLOW_CTRL_CTS_RTS=> CTS/RTS
 // <SL_IOSTREAM_EUSART_UART_FLOW_CTRL_SOFT=> Software Flow control (XON/XOFF)
 // <i> Default: SL_IOSTREAM_EUSART_UART_FLOW_CTRL_NONE
-#define SL_IOSTREAM_EUSART_VCOM_FLOW_CONTROL_TYPE     SL_IOSTREAM_EUSART_UART_FLOW_CTRL_CTS_RTS
+#define SL_IOSTREAM_EUSART_VCOM_FLOW_CONTROL_TYPE     SL_IOSTREAM_EUSART_UART_FLOW_CTRL_NONE
 
 // <o SL_IOSTREAM_EUSART_VCOM_RX_BUFFER_SIZE> Receive buffer size
 // <i> Default: 32
@@ -79,7 +79,7 @@
 // <q SL_IOSTREAM_EUSART_VCOM_RESTRICT_ENERGY_MODE_TO_ALLOW_RECEPTION> Restrict the energy mode to allow the reception.
 // <i> Default: 1
 // <i> Limits the lowest energy mode the system can sleep to in order to keep the reception on. May cause higher power consumption.
-#define SL_IOSTREAM_EUSART_VCOM_RESTRICT_ENERGY_MODE_TO_ALLOW_RECEPTION    0
+#define SL_IOSTREAM_EUSART_VCOM_RESTRICT_ENERGY_MODE_TO_ALLOW_RECEPTION    1
 
 // </h>
 
